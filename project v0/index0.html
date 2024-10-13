@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Data Monitoring</title>
+    <script src="https://www.gstatic.com/firebasejs/8.3.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.3.0/firebase-database.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+
+        .graph {
+            width: 100%;
+            max-width: 600px;
+            margin: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        .stats {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+
+        .stat-box {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin: 10px;
+            flex: 1;
+            max-width: 300px;
+        }
+
+        .stat-box h3 {
+            margin: 0;
+            color: #333;
+        }
+
+        .stat-box p {
+            margin: 10px 0 0;
+            font-size: 1.2em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>Real-Time Monitoring: Temperature, pH, TDS</h1>
+
+    <div class="container">
+        <div class="graph">
+            <h2>Temperature</h2>
+            <canvas id="temperatureChart"></canvas>
+        </div>
+        <div class="graph">
+            <h2>pH</h2>
+            <canvas id="phChart"></canvas>
+        </div>
+        <div class="graph">
+            <h2>TDS</h2>
+            <canvas id="tdsChart"></canvas>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-box">
+            <h3>Temperature</h3>
+            <p id="tempMin">Min: -- °C</p>
+            <p id="tempMax">Max: -- °C</p>
+        </div>
+        <div class="stat-box">
+            <h3>pH</h3>
+            <p id="phMin">Min: --</p>
+            <p id="phMax">Max: --</p>
+        </div>
+        <div class="stat-box">
+            <h3>TDS</h3>
+            <p id="tdsMin">Min: -- ppm</p>
+            <p id="tdsMax">Max: -- ppm</p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Firebase with your config
+        const firebaseConfig = {
+            apiKey: "AIzaSyC_zE2E--Bcm7tKLuXFZE9d7Xd-77vM3BY",
+            authDomain: "esp32-graph.firebaseapp.com",
+            databaseURL: "https://esp32-graph-default-rtdb.firebaseio.com",
+            projectId: "esp32-graph",
+            storageBucket: "esp32-graph.appspot.com",
+            messagingSenderId: "526081210306",
+            appId: "1:526081210306:web:f9e21210d81a4a9716c85b",
+            measurementId: "G-JD7NPZNEJ2"
+        };          
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // Setup Chart.js
+        const createChart = (ctx, label, color) => new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: label,
+                    data: [],
+                    borderColor: color,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: label
+                        }
+                    }
+                }
+            }
+        });
+
+        const tempCtx = document.getElementById('temperatureChart').getContext('2d');
+        const phCtx = document.getElementById('phChart').getContext('2d');
+        const tdsCtx = document.getElementById('tdsChart').getContext('2d');
+
+        const tempChart = createChart(tempCtx, 'Temperature (°C)', 'rgba(255, 99, 132, 1)');
+        const phChart = createChart(phCtx, 'pH Level', 'rgba(54, 162, 235, 1)');
+        const tdsChart = createChart(tdsCtx, 'TDS (ppm)', 'rgba(75, 192, 192, 1)');
+
+        // Initialize min and max values
+        let tempMin = Infinity, tempMax = -Infinity;
+        let phMin = Infinity, phMax = -Infinity;
+        let tdsMin = Infinity, tdsMax = -Infinity;
+
+        // Update Chart and Stats
+        const updateChart = (chart, newData, label) => {
+            chart.data.labels.push(label);
+            chart.data.datasets[0].data.push(newData);
+            if (chart.data.labels.length > 20) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+            }
+            chart.update();
+        };
+
+        const updateStats = (minElem, maxElem, minVal, maxVal) => {
+            minElem.textContent = `Min: ${minVal.toFixed(2)}`;
+            maxElem.textContent = `Max: ${maxVal.toFixed(2)}`;
+        };
+
+        database.ref('sensor_data/Temperature').on('value', (snapshot) => {
+            const tempValue = snapshot.val();
+            const label = new Date().toLocaleTimeString();
+            updateChart(tempChart, tempValue, label);
+            if (tempValue < tempMin) tempMin = tempValue;
+            if (tempValue > tempMax) tempMax = tempValue;
+            updateStats(document.getElementById('tempMin'), document.getElementById('tempMax'), tempMin, tempMax);
+        });
+
+        database.ref('sensor_data/pH').on('value', (snapshot) => {
+            const phValue = snapshot.val();
+            const label = new Date().toLocaleTimeString();
+            updateChart(phChart, phValue, label);
+            if (phValue < phMin) phMin = phValue;
+            if (phValue > phMax) phMax = phValue;
+            updateStats(document.getElementById('phMin'), document.getElementById('phMax'), phMin, phMax);
+        });
+
+        database.ref('sensor_data/TDS').on('value', (snapshot) => {
+            const tdsValue = snapshot.val();
+            const label = new Date().toLocaleTimeString();
+            updateChart(tdsChart, tdsValue, label);
+            if (tdsValue < tdsMin) tdsMin = tdsValue;
+            if (tdsValue > tdsMax) tdsMax = tdsValue;
+            updateStats(document.getElementById('tdsMin'), document.getElementById('tdsMax'), tdsMin, tdsMax);
+        });
+    </script>
+</body>
+</html>
